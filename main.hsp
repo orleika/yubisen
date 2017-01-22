@@ -1,0 +1,839 @@
+/**
+* rule
+* turn
+* mine +1(left, right), opponent +1(left, right), separate
+* over 5 => dead
+* both hand dead => lose
+*/
+#include "a2d.hsp"
+#include "user32.as"
+
+/** size config
+*/
+// screen
+#const screenWidth 640
+#const screenHeight 640
+// menu(images)
+#const titleImageWidth 276
+#const titleImageHeight 124
+#const titleImageMarginTop 80
+#const menuImageWidth 351
+#const menuImageHeight 62
+#const menuImageMargin 100
+#const menuImageMarginTop titleImageHeight + titleImageMarginTop + 100
+#const menuHoverMargin 5
+// howto(collision)
+#const howtoHoverMargin 50
+#const howtoTextMarginX 50
+#const howtoTextMarginY 40
+#const howtoTextLine 45
+// howto(images)
+#const howtoImageWidth 446
+#const howtoImageHeight 444
+#const nbImageWidth 26
+#const nbImageHeight 48
+#const nbImageMarginX howtoHoverMargin - nbImageWidth / 2
+#const nbImageMarginY screenHeight / 2 - nbImageWidth / 2
+// hand(collision)
+#const handColRadius 70
+#const handColMarginTop 20
+#const handColMarginLeft 180
+#const oppLeftX handColMarginLeft
+#const oppLeftY handColRadius + handColMarginTop
+#const oppRightX screenWidth - handColMarginLeft
+#const oppRightY handColRadius + handColMarginTop
+#const minLeftX handColMarginLeft
+#const minLeftY screenHeight - handColRadius - handColMarginTop
+#const minRightX screenWidth - handColMarginLeft
+#const minRightY screenHeight - handColRadius - handColMarginTop
+#const divOppX screenWidth / 2
+#const divOppY handColRadius + handColMarginTop
+#const divMinX screenWidth / 2
+#const divMinY screenHeight - handColRadius - handColMarginTop
+// hand(images)
+#const handImageWidth 135
+#const handImageHeight 239
+#const handImageMarginTop 20
+#const handImageMarginLeft 245
+#const handLeftImageX handImageMarginLeft
+#const handRightImageX screenWidth - handImageMarginLeft
+#const handMyImageY screenHeight - handImageHeight - handImageMarginTop / 2.3
+#const handOppImageY handImageHeight + handImageMarginTop * 2.3
+#const handSelImageMargin 40
+
+/** basic initialize
+*/
+screen 0, screenWidth, screenHeight
+cls 4
+title "指戦"
+color 255, 255, 255 :boxf
+font msgothic, 18, font_antialias
+/** mode
+* 0 menu
+* 1 how to
+* 2 play(player)
+* 3 play(com)
+*/
+mode = 0
+/** hover menu
+-1 null
+0 vs player
+1 vs com
+2 how to
+*/
+hmenu = -1
+/** how to
+* 0~8
+* pnflg
+* -1 null
+* 0 prev
+* 1 next
+*/
+index = 1
+pnflg = -1
+/** state
+* 0 player
+* 1 AI
+* 2 init
+* 3 player1 win
+* 4 player2 win
+*/
+state = 2
+/** hand
+* 0 only separate
+* 1 buf not null, able to attack
+*/
+hand = 0
+/** sbuf
+* -1 null
+* 0 oppL
+* 1 oppR
+* 2 minL
+* 3 minR
+*/
+sbuf = -1
+buf = 0
+oppL = 1
+oppR = 1
+minL = 1
+minR = 1
+/** AI
+* 
+*/
+aimin = 0
+aiopp = 0
+aivalue = 0
+aiflg = 0
+aicount = 100
+
+*initTitle
+	mode = 0
+	state = 2
+	title "指戦"
+	onclick gosub *mouseClickMenu
+	oncmd gosub *mouseMoveMenu, $200
+	/** image config
+	*/
+	buffer 1
+	picload "title.png"
+	buffer 2
+	picload "menu0.png"
+	buffer 3
+	picload "menu1.png"
+	buffer 4
+	picload "menu2.png"
+	goto *drawMenu
+
+*initHowto
+	mode = 1
+	state = 2
+	index = 1
+	font "メイリオ", 24, font_antialias
+	title "指戦 - How to Play (" + index + "/9)"
+	onclick gosub *mouseClickHowto
+	onkey gosub *keyListener
+	oncmd gosub *mouseMoveHowto, $200
+	/** image config
+	*/
+	buffer 1
+	picload "pn.png"
+	buffer 2
+	picload "pn1.png"
+	buffer 3
+	picload "howto0.png"
+	buffer 4
+	picload "howto1.png"
+	buffer 5
+	picload "howto2.png"
+	buffer 6
+	picload "howto3.png"
+	buffer 7
+	picload "howto4.png"
+	buffer 8
+	picload "howto5.png"
+	buffer 9
+	picload "howto6.png"
+	goto *drawMenu
+
+*drawMenu
+gsel 0
+/* draw(double buffering) */
+repeat
+	redraw 0
+	color 255, 255, 255 :boxf
+	if(mode = 0) {
+		gosub *drawTitle
+	} else :if(mode = 1) {
+		gosub *drawHowto
+	}
+	wait 1	
+	redraw 1
+loop
+/* end of draw */
+
+*drawTitle
+	pos screenWidth / 2 - titleImageWidth / 2, titleImageMarginTop :gcopy 1, 0, 0, titleImageWidth, titleImageHeight
+	pos w_int(hmenu = 0, screenWidth / 2 - menuImageWidth / 2 - menuHoverMargin, screenWidth / 2 - menuImageWidth / 2), w_int(hmenu = 0, menuImageMarginTop - menuHoverMargin, menuImageMarginTop) :gcopy 2, 0, 0, menuImageWidth, menuImageHeight
+	pos w_int(hmenu = 1, screenWidth / 2 - menuImageWidth / 2 - menuHoverMargin, screenWidth / 2 - menuImageWidth / 2), w_int(hmenu = 1, menuImageMarginTop + menuImageMargin - menuHoverMargin, menuImageMarginTop + menuImageMargin) :gcopy 3, 0, 0, menuImageWidth, menuImageHeight
+	pos w_int(hmenu = 2, screenWidth / 2 - menuImageWidth / 2 - menuHoverMargin, screenWidth / 2 - menuImageWidth / 2), w_int(hmenu = 2, menuImageMarginTop + menuImageMargin * 2 - menuHoverMargin, menuImageMarginTop + menuImageMargin * 2) :gcopy 4, 0, 0, menuImageWidth, menuImageHeight
+	return
+	
+*drawHowto
+	// next prev
+	if(pnflg = 0) {
+		pos 0, 0 :color 170, 220, 255 :boxf 0, 0, howtoHoverMargin, screenHeight
+	} else :if(pnflg = 1) {
+		pos 0, 0 :color 170, 220, 255 :boxf screenWidth - howtoHoverMargin, 0, screenWidth, screenHeight
+	}
+	pos nbImageMarginX, nbImageMarginY :gzoom -nbImageWidth, nbImageHeight, w_int(pnflg = 0, 2, 1), 0, 0, nbImageWidth, nbImageHeight
+	pos screenWidth - nbImageMarginX, nbImageMarginY :gzoom nbImageWidth, nbImageHeight, w_int(pnflg = 1, 2, 1), 0, 0, nbImageWidth, nbImageHeight
+	// howto image
+	if(index ! 1 & index ! 9) {
+		pos screenWidth / 2 - howtoImageWidth / 2 , 0 :gcopy index + 1, 0, 0, howtoImageWidth, howtoImageHeight
+	}
+	// text
+	color 21, 21, 21
+	switch index
+	case 1
+		pos howtoHoverMargin + howtoTextMarginX, howtoTextMarginY :mes "指戦は2人で戦うゲームです。"
+		pos howtoHoverMargin + howtoTextMarginX, howtoTextMarginY + howtoTextLine * 2 :mes "このゲームでは指を使います。"
+		pos howtoHoverMargin + howtoTextMarginX, howtoTextMarginY + howtoTextLine * 3 :mes "指の本数がこのゲームで扱う値"
+		pos howtoHoverMargin + howtoTextMarginX, howtoTextMarginY + howtoTextLine * 4 :mes "となります。"
+		pos howtoHoverMargin + howtoTextMarginX, howtoTextMarginY + howtoTextLine * 6 :mes "初めプレイヤーは両手の指を"
+		pos howtoHoverMargin + howtoTextMarginX, howtoTextMarginY + howtoTextLine * 7 :mes "それぞれ1にした状態でゲームを開始します。";各プレイヤーは指で相手の指を攻撃し、最終的に相手の両手それぞれの指の値を0にしたほうが勝利します"
+		swbreak
+	case 2
+		pos howtoHoverMargin + howtoTextMarginX, howtoImageHeight + howtoTextMarginY :mes "ゲーム画面です。"
+		pos howtoHoverMargin + howtoTextMarginX, howtoImageHeight + howtoTextMarginY + howtoTextLine :mes "相手の指と自分の指が画面に表示"
+		pos howtoHoverMargin + howtoTextMarginX, howtoImageHeight + howtoTextMarginY + howtoTextLine * 2 :mes "されています。"
+		swbreak
+	case 3
+		pos howtoHoverMargin + howtoTextMarginX, howtoImageHeight + howtoTextMarginY :mes "操作したい自分の指をクリックして"
+		pos howtoHoverMargin + howtoTextMarginX, howtoImageHeight + howtoTextMarginY + howtoTextLine :mes "選択状態にしてみてください。"
+		swbreak
+	case 4
+		pos howtoHoverMargin + howtoTextMarginX, howtoImageHeight + howtoTextMarginY :mes "選択状態になると手が前に行きます。"
+		pos howtoHoverMargin + howtoTextMarginX, howtoImageHeight + howtoTextMarginY + howtoTextLine :mes "この状態になると相手の指に攻撃できます。"
+		swbreak
+	case 5
+		pos howtoHoverMargin + howtoTextMarginX, howtoImageHeight + howtoTextMarginY :mes "では、相手の指をクリックして攻撃して"
+		pos howtoHoverMargin + howtoTextMarginX, howtoImageHeight + howtoTextMarginY + howtoTextLine :mes "みましょう。"
+		swbreak
+	case 6
+		pos howtoHoverMargin + howtoTextMarginX, howtoImageHeight + howtoTextMarginY :mes "攻撃出来ました。"
+		pos howtoHoverMargin + howtoTextMarginX, howtoImageHeight + howtoTextMarginY + howtoTextLine :mes "指が攻撃されると、攻撃した指の値と"
+		pos howtoHoverMargin + howtoTextMarginX, howtoImageHeight + howtoTextMarginY + howtoTextLine * 2 :mes "攻撃された指の値の合計値になります。"
+		swbreak
+	case 7
+		pos howtoHoverMargin + howtoTextMarginX, howtoImageHeight + howtoTextMarginY :mes "指と指の間にあるボタンは"
+		pos howtoHoverMargin + howtoTextMarginX, howtoImageHeight + howtoTextMarginY + howtoTextLine :mes "分割ボタンです。"
+		pos howtoHoverMargin + howtoTextMarginX, howtoImageHeight + howtoTextMarginY + howtoTextLine * 2 :mes "クリックしてみましょう。"
+		swbreak
+	case 8
+		pos howtoHoverMargin + howtoTextMarginX, howtoImageHeight + howtoTextMarginY :mes "このように左右均等に値が分割されます。"
+		pos howtoHoverMargin + howtoTextMarginX, howtoImageHeight + howtoTextMarginY + howtoTextLine :mes "分割しても結果が同じ場合は分割できません。"
+		swbreak
+	case 9
+		pos howtoHoverMargin + howtoTextMarginX, howtoTextMarginY :mes "操作方法は以上です。"
+		pos howtoHoverMargin + howtoTextMarginX, howtoTextMarginY + howtoTextLine * 2 :mes "実際のゲームでは、攻撃または分割を"
+		pos howtoHoverMargin + howtoTextMarginX, howtoTextMarginY + howtoTextLine * 3 :mes "プレイヤーで交互に繰り返し行います。"
+		pos howtoHoverMargin + howtoTextMarginX, howtoTextMarginY + howtoTextLine * 4 :mes "そして、早く相手の指の値を両方0にした"
+		pos howtoHoverMargin + howtoTextMarginX, howtoTextMarginY + howtoTextLine * 5 :mes "プレイヤーの勝利となります。"
+		pos howtoHoverMargin + howtoTextMarginX, howtoTextMarginY + howtoTextLine * 7 :mes "プレイヤー2人で遊ぶ場合はタイトル画面で"
+		pos howtoHoverMargin + howtoTextMarginX, howtoTextMarginY + howtoTextLine * 8 :mes "vs Player を選択してください。"
+		pos howtoHoverMargin + howtoTextMarginX, howtoTextMarginY + howtoTextLine * 9 :mes "プレイヤー1人で遊ぶ場合は"
+		pos howtoHoverMargin + howtoTextMarginX, howtoTextMarginY + howtoTextLine * 10 :mes "(コンピューターと遊ぶ場合は)タイトル画面で"
+		pos howtoHoverMargin + howtoTextMarginX, howtoTextMarginY + howtoTextLine * 11 :mes "vs COM を選択してください。"
+		swbreak
+	default
+		swbreak
+	swend
+	return
+
+*initGame
+	oppL = 1
+	oppR = 1
+	minL = 1
+	minR = 1
+	sbuf = -1
+	buf = 0
+	hand = 0
+	state = 0
+	font "メイリオ", 18, font_antialias
+	if(mode = 2) {
+		title "指戦 - vs Player"
+	} else :if(mode = 3) {
+		title "指戦 - vs COM"
+	}
+	onclick gosub *mouseClickGame
+	onkey gosub *keyListener
+	oncmd gosub *mouseMoveGame, $200
+	
+	/** image config
+	*/
+	buffer 1
+	picload "tri.png"
+	buffer 2
+	picload "hand0.png"
+	buffer 3
+	picload "hand1.png"
+	buffer 4
+	picload "hand2.png"
+	buffer 5
+	picload "hand3.png"
+/* end of init */
+
+gsel 0
+/* draw(double buffering) */
+repeat
+	redraw 0
+	color 255, 255, 255 :boxf
+	if(mode = 3 & state = 1) {
+		aicount = aicount - 1
+		gosub *comAttack
+	}
+	if(2 < state) {
+		gosub *drawEnd
+	} else {
+		gosub *drawGame
+	}
+	gosub *judge
+	;color 0, 0, 0
+	;pos 0, 0 :mes state
+	;pos 0, 20 :mes mode
+	;pos 0, 30 :mes aivalue
+	;pos 0, 40 :mes "op"+oppL +":"+ oppR +":"+ minL +":"+ minR
+	;pos 0, 50 :mes "ai"+aiopp+":"+aimin
+	wait 1
+	redraw 1
+loop
+/* end of draw */
+
+*drawEnd
+	font "メイリオ", 48, font_antialias
+	color 0, 0, 0
+	boxf 0, 0, screenWidth, howtoHoverMargin
+	boxf 0, screenHeight - howtoHoverMargin, screenWidth, screenHeight
+	color 21, 21, 21
+	if(mode = 2) {	// player
+		if(state = 3) {
+			pos howtoHoverMargin + howtoTextMarginX, screenHeight / 2 - howtoTextMarginY * 5 :mes "Player1 Win!"
+		} else {
+			pos howtoHoverMargin + howtoTextMarginX, screenHeight / 2 - howtoTextMarginY :mes "Player2 Win!"
+		}
+	} else :if(mode = 3) {	// com
+		if(state = 3) {
+			pos howtoHoverMargin + howtoTextMarginX, screenHeight / 2 - howtoTextMarginY :mes "You Win!"
+		} else {
+			pos howtoHoverMargin + howtoTextMarginX, screenHeight / 2 - howtoTextMarginY :mes "You Lose...."
+		}
+	}
+	pos howtoHoverMargin + howtoTextMarginX * 4, screenHeight / 2 + howtoTextMarginY + howtoTextLine :mes "Replay?"
+	font "メイリオ", 32, font_antialias
+	pos howtoHoverMargin + howtoTextMarginX * 2, screenHeight / 2 + howtoTextMarginY + howtoTextLine * 3 :mes "(Press ESC to return title.)"
+	onclick gosub *mouseClickEnd
+	onkey gosub *keyListener
+	oncmd gosub *mouseMoveEnd, $200
+	return
+
+*drawGame
+	gosub *drawTarget
+	gosub *drawHand
+	gosub *drawDivide
+	return
+	
+*drawTarget
+	/* player anchor */
+	if(state = 0) {	// my turn
+		pos 10, minLeftY :gcopy 1, 0, 0, 22, 21
+	} else :if(state = 1) {	// AI turn
+		pos 10, oppLeftY :gcopy 1, 0, 0, 22, 21
+	}
+	return
+/* end of main */
+
+*drawHand
+	  // oppL
+	  if(oppL ! 0) {
+	    pos handLeftImageX, w_int(sbuf = 0, handOppImageY, handOppImageY - handSelImageMargin) :gzoom -handImageWidth, -handImageHeight, oppL + 1, 0, 0, handImageWidth, handImageHeight
+	  }
+	  // oppR
+	  if(oppR ! 0) {
+	    pos handRightImageX, w_int(sbuf = 1, handOppImageY, handOppImageY - handSelImageMargin) :gzoom handImageWidth, -handImageHeight, oppR + 1, 0, 0, handImageWidth, handImageHeight
+	  }
+	  // minL
+	  if(minL ! 0) {
+	    pos handLeftImageX, w_int(sbuf = 2, handMyImageY - handSelImageMargin, handMyImageY) :gzoom -handImageWidth, handImageHeight, minL + 1, 0, 0, handImageWidth, handImageHeight
+	  }
+	  // minR
+	  if(minR ! 0) {
+	    pos handRightImageX, w_int(sbuf = 3, handMyImageY - handSelImageMargin, handMyImageY) :gzoom handImageWidth, handImageHeight, minR + 1, 0, 0, handImageWidth, handImageHeight
+	  }
+	return
+/* end of hand */
+*drawDivide
+	drawEllipse divMinX, divMinY, handColRadius, handColRadius, 10, 40, 80
+	drawEllipse divOppX, divOppY, handColRadius, handColRadius, 10, 40, 80
+	pos divMinX - handColRadius / 2 - 15, divMinY - 5 :color 255, 255, 255 :mes "← divide →"
+	pos divOppX - handColRadius / 2 - 15, divOppY - 5 :color 255, 255, 255 :mes "← divide →"
+	return
+
+*judge
+	if(oppL = 0 & oppR = 0) {
+		state = 3
+	} else :if(minL = 0 & minR = 0) {
+		state = 4
+	}
+	return
+/* end of judge */
+
+/* AI */
+*comAttack
+	if(aiflg = 0 & aicount < 0) {
+		rootValue oppL, oppR, minL, minR
+		switch aimin
+		case 0
+			gosub *attackOppLeft
+			swbreak
+		case 1
+			gosub *attackOppRight
+			swbreak
+		swend
+		aiflg = 1
+		aicount = 15
+	} else :if(aicount < 0) {
+		switch aiopp
+		case 0
+			gosub *attackMinLeft
+			swbreak
+		case 1
+			gosub *attackMinRight
+			swbreak
+		case 2
+			gosub *divideOpp
+			swbreak
+		swend
+		aiflg = 0
+		aicount = 15
+		state = 0
+		sbuf = -1
+		buf = 0
+		hand = 0
+	}
+	return
+
+/* attack */
+*attackOppLeft
+	if(sbuf = 0) {
+		sbuf = -1
+		buf = 0
+		hand = 0
+	} else :if(hand = 0) {
+		sbuf = 0
+		buf = oppL
+		hand = 1
+	} else {
+		oppL = (oppL + buf) \ 5;w_int(4 < oppL + buf, 0, oppL + buf)
+		sbuf = -1
+		buf = 0
+		hand = 2
+	}
+	return
+*attackOppRight
+	if(sbuf = 1) {
+		sbuf = -1
+		buf = 0
+		hand = 0
+	} else :if(hand = 0) {
+		sbuf = 1
+		buf = oppR
+		hand = 1
+	} else {
+		oppR = (oppR + buf) \ 5;w_int(4 < oppR + buf, 0, oppR + buf)
+		sbuf = -1
+		buf = 0
+		hand = 2
+	}
+	return
+*attackMinLeft
+	if(sbuf = 2) {
+		sbuf = -1
+		buf = 0
+		hand = 0
+	} else :if(hand = 0) {
+		sbuf = 2
+		buf = minL
+		hand = 1
+	} else {
+		minL = (minL + buf) \ 5;w_int(4 < minL + buf, 0, minL + buf)
+		sbuf = -1
+		buf = 0
+		hand = 2
+	}
+	return
+*attackMinRight
+	if(sbuf = 3) {
+		sbuf = -1
+		buf = 0
+		hand = 0
+	} else :if(hand = 0) {
+		sbuf = 3
+		buf = minR
+		hand = 1
+	} else {
+		minR = (minR + buf) \ 5;w_int(4 < minR + buf, 0, minR + buf)
+		sbuf = -1
+		buf = 0
+		hand = 2
+	}
+	return
+*divideOpp
+	if(1 < abs(oppL - oppR)) {
+		tmpL = oppL
+		tmpR = oppR
+		oppL = (tmpL + tmpR) / 2
+		oppR = (tmpL + tmpR) / 2 + (tmpL + tmpR) \ 2
+		hand = 2
+	}
+	return
+*divideMin
+	if(1 < abs(minL - minR)) {
+		tmpL = minL
+		tmpR = minR
+		minL = (tmpL + tmpR) / 2
+		minR = (tmpL + tmpR) / 2 + (tmpL + tmpR) \ 2
+		hand = 2
+	}
+	return	
+
+/* event */
+*mouseClickMenu
+	if(screenWidth / 2 - menuImageWidth / 2 < mousex & mousex < screenWidth / 2 + menuImageWidth / 2) {
+		if(menuImageMarginTop <= mousey & mousey <= menuImageMarginTop + menuImageHeight) {
+			mode = 2
+			goto *initGame
+		} else :if(menuImageMarginTop + menuImageMargin <= mousey & mousey <= menuImageMarginTop + menuImageHeight + menuImageMargin) {
+			mode = 3
+			goto *initGame
+		} else :if(menuImageMarginTop + menuImageMargin * 2 <= mousey & mousey <= menuImageMarginTop + menuImageHeight + menuImageMargin * 2) {
+			mode = 1
+			gosub *initHowto
+		}
+	}
+	return
+
+*mouseMoveMenu
+	if(screenWidth / 2 - menuImageWidth / 2 < mousex & mousex < screenWidth / 2 + menuImageWidth / 2) {
+		if(menuImageMarginTop <= mousey & mousey <= menuImageMarginTop + menuImageHeight) {
+			hmenu = 0
+			LoadCursor 0, 32649
+			SetClassLong hwnd, -12, stat
+		} else :if(menuImageMarginTop + menuImageMargin <= mousey & mousey <= menuImageMarginTop + menuImageHeight + menuImageMargin) {
+			hmenu = 1
+			LoadCursor 0, 32649
+			SetClassLong hwnd, -12, stat
+		} else :if(menuImageMarginTop + menuImageMargin * 2 <= mousey & mousey <= menuImageMarginTop + menuImageHeight + menuImageMargin * 2) {
+			hmenu = 2
+			LoadCursor 0, 32649
+			SetClassLong hwnd, -12, stat
+		} else {
+			hmenu = -1
+			LoadCursor 0, 32512
+			SetClassLong hwnd, -12, stat
+		}
+	} else {
+		hmenu = -1
+		LoadCursor 0, 32512
+		SetClassLong hwnd, -12, stat
+	}
+	return
+
+*mouseClickHowto
+	if(mousex < howtoHoverMargin) {
+		if(index ! 1) {
+			index = index - 1
+		} else {
+			goto *initTitle
+		}
+	} else :if(screenWidth - howtoHoverMargin < mousex) {
+		if(index ! 9) {
+			index = index + 1
+		} else {
+			goto *initTitle
+		}
+	}
+	title "指戦 - How to Play (" + index + "/9)"
+	return
+
+*mouseMoveHowto
+	if(mousex < howtoHoverMargin) {
+		pnflg = 0
+		LoadCursor 0, 32649
+		SetClassLong hwnd, -12, stat
+	} else :if(screenWidth - howtoHoverMargin < mousex) {
+		pnflg = 1
+		LoadCursor 0, 32649
+		SetClassLong hwnd, -12, stat
+	} else {
+		pnflg = -1
+		LoadCursor 0, 32512
+		SetClassLong hwnd, -12, stat
+	}
+	return
+
+*mouseClickGame
+	if(state = 2 | mode = 3 & state = 1) {
+		return
+	}
+	if(powf((mousex - oppLeftX), 2) + powf((mousey - oppLeftY), 2) <= powf(handColRadius, 2)) {	// oppLeft
+		if(hand = 0 & state ! 1 | oppL = 0) {
+			return
+		}
+		gosub *attackOppLeft
+	} else :if(powf((mousex - oppRightX), 2) + powf((mousey - oppRightY), 2) <= powf(handColRadius, 2)) {	// oppRight
+		if(hand = 0 & state ! 1 | oppR = 0) {
+			return
+		}
+		gosub *attackOppRight
+	} else :if(powf((mousex - minLeftX), 2) + powf((mousey - minLeftY), 2) <= powf(handColRadius, 2)) {	// minLeft
+		if(hand = 0 & state ! 0 | minL = 0) {
+			return
+		}
+		gosub *attackMinLeft
+	} else :if(powf((mousex - minRightX), 2) + powf((mousey - minRightY), 2) <= powf(handColRadius, 2)) {	// minRight
+		if(hand = 0 & state ! 0 | minR = 0) {
+			return
+		}
+		gosub *attackMinRight
+	} else :if(powf((mousex - divOppX), 2) + powf((mousey - divOppY), 2) <= powf(handColRadius, 2)){	// oppDivide
+		if(state ! 1) {
+			return
+		}
+		gosub *divideOpp
+	} else :if(powf((mousex - divMinX), 2) + powf((mousey - divMinY), 2) <= powf(handColRadius, 2)){	// minDivide
+		if(state ! 0) {
+			return
+		}
+		gosub *divideMin
+	}
+	if(hand = 2) {
+		hand = 0
+		if(mode = 3) {
+			state = 1
+		} else {
+			state = (state + 1) \ 2
+		}
+	}
+	return
+	
+*mouseMoveGame
+	if(powf((mousex - oppLeftX), 2) + powf((mousey - oppLeftY), 2) <= powf(handColRadius, 2) | powf((mousex - oppRightX), 2) + powf((mousey - oppRightY), 2) <= powf(handColRadius, 2) | powf((mousex - minLeftX), 2) + powf((mousey - minLeftY), 2) <= powf(handColRadius, 2) | powf((mousex - minRightX), 2) + powf((mousey - minRightY), 2) <= powf(handColRadius, 2) | powf((mousex - divMinX), 2) + powf((mousey - divMinY), 2) <= powf(handColRadius, 2) | powf((mousex - divOppX), 2) + powf((mousey - divOppY), 2) <= powf(handColRadius, 2)) {
+		LoadCursor 0, 32649
+		SetClassLong hwnd, -12, stat
+	} else {
+		LoadCursor 0, 32512
+		SetClassLong hwnd, -12, stat
+	}
+	return
+	
+*mouseClickEnd
+	if(screenWidth / 2 - menuImageWidth / 2 < mousex & mousex < screenWidth / 2 + menuImageWidth / 2 & screenHeight / 2 + howtoTextMarginY + howtoTextLine < mousey & mousey < screenHeight / 2 + howtoTextMarginY + howtoTextLine * 2) {
+		goto *initGame
+	} 
+	return
+
+*mouseMoveEnd
+	if(screenWidth / 2 - menuImageWidth / 2 < mousex & mousex < screenWidth / 2 + menuImageWidth / 2 & screenHeight / 2 + howtoTextMarginY + howtoTextLine < mousey & mousey < screenHeight / 2 + howtoTextMarginY + howtoTextLine * 2) {
+		LoadCursor 0, 32649
+		SetClassLong hwnd, -12, stat
+	} else {
+		LoadCursor 0, 32512
+		SetClassLong hwnd, -12, stat
+	}
+	return
+	
+*keyListener
+	if(iparam = 27) {	// ESC
+		dialog "タイトルに戻りますか？", 2, ""
+		if(stat = 6) {
+			goto *initTitle
+		}
+	}
+	if(iparam = 84) {
+		state = 3
+		gosub *drawEnd
+	}
+	if(iparam = 89) {
+		state = 4
+		gosub *drawEnd
+	}
+	return
+/* end of event */
+
+/* user definition function */
+#module
+
+value = 0
+bvalue = 0
+
+#deffunc drawEllipse int x0, int y0, int r1, int r2, int r, int g, int b
+	color r, g, b
+	circle x0 - r1, y0 - r2, x0 + r1, y0 + r2
+	return
+	
+#defcfunc w_int int pCondition, int pTrueCase, int pFalseCase, local wReturn
+	if pCondition : wReturn = pTrueCase : else : wReturn = pFalseCase
+	return wReturn
+
+#deffunc getHandValue int mhv, int mrv, int phv, int prv, int flg, local ans
+	ans = 0
+	if(mhv = 0) {
+		ans = ans - 200
+	}
+	if(mrv = 0) {
+		ans = ans - 200
+	}
+	if(phv = 0) {
+		ans = ans + 200
+	}
+	if(prv = 0) {
+		ans = ans + 200
+	}
+	if(mhv = 1) {
+		ans = ans - 40
+	}
+	if(mrv = 1) {
+		ans = ans - 40
+	}
+	if(mhv = 3) {
+		ans = ans - 10
+	}
+	if(mrv = 3) {
+		ans = ans - 10
+	}
+	if(phv = 1) {
+		ans = ans + 30
+	}
+	if(prv = 1) {
+		ans = ans + 30
+	}
+	if(phv = 3) {
+		ans = ans - 10
+	}
+	if(prv = 3) {
+		ans = ans - 10
+	}
+	if(phv = 4) {
+		ans = ans - 30
+	}
+	if(prv = 4) {
+		ans = ans - 30
+	}
+	if(flg = 0) {
+		value = ans
+	} else {
+		bvalue = ans
+	}
+	return
+
+#deffunc rootValue int mh, int mr, int ph, int pr
+	aivalue@ = -1000
+	if(mh ! 0) {
+		if(ph ! 0) {
+			getHandValue mh, mr, (ph + mh) \ 5, pr, 0
+			if(aivalue@ < value) {
+				aimin@ = 0
+				aiopp@ = 0
+				aivalue@ = value
+			}
+		}
+		if(pr ! 0) {
+			getHandValue mh, mr, ph, (pr + mh) \ 5, 0
+			if(aivalue@ < value) {
+				aimin@ = 0
+				aiopp@ = 1
+				aivalue@ = value
+			}
+		}
+	}
+	if(mr ! 0) {
+		if(ph ! 0) {
+			getHandValue mh, mr, (ph + mr) \ 5, pr, 0
+			if(aivalue@ < value) {
+				aimin@ = 1
+				aiopp@ = 0
+				aivalue@ = value
+			}
+		}
+		if(pr ! 0) {
+			getHandValue mh, mr, ph, (pr + mr) \ 5, 0
+			if(aivalue@ < value) {
+				aimin@ = 1
+				aiopp@ = 1
+				aivalue@ = value
+			}
+		}
+	}
+	if(1 < abs(mh - mr)) {
+		getHandValue (mh + mr) / 2, (mh + mr) / 2 + (mh + mr) \ 2, ph, pr, 0
+		if(aivalue@ < value) {
+			aimin@ = 2
+			aiopp@ = 2
+			aivalue@ = value
+		}
+	}
+	return
+
+#deffunc branchValue int mhb, int mrb, int phb, int prb, local bbvalue
+	if(mh ! 0) {
+		if(ph ! 0) {
+			getHandValue mh, mr, (ph + mh) \ 5, pr, 1
+		}
+		if(pr ! 0) {
+			getHandValue mh, mr, ph, (pr + mh) \ 5, 1
+		}
+	}
+	if(mr ! 0) {
+		if(ph ! 0) {
+			getHandValue mh, mr, (ph + mr) \ 5, pr
+		}
+		if(pr ! 0) {
+			getHandValue mh, mr, ph, (pr + mr) \ 5
+			if(aivalue@ < value) {
+				aimin@ = 1
+				aiopp@ = 1
+				aivalue@ = value
+			}
+		}
+	}
+	if(1 < abs(mh - mr)) {
+		getHandValue (mh + mr) / 2, (mh + mr) / 2 + (mh + mr) \ 2, ph, pr
+		if(aivalue@ < value) {
+			aimin@ = 2
+			aiopp@ = 2
+			aivalue@ = value
+		}
+	}
+	return
+
+#global
